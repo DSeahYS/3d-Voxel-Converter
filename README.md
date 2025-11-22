@@ -111,6 +111,10 @@ This project is open-source. Refer to the repository for licensing details.
 
 ## Screenshots
 
-*(Add screenshots here if available)*
+<img width="1319" height="1262" alt="image" src="https://github.com/user-attachments/assets/78ea103f-2e26-4562-b115-27db7007aa3f" />
+<img width="1220" height="1267" alt="image" src="https://github.com/user-attachments/assets/112a34bb-ad10-496b-b033-32b198e253b8" />
+<img width="1320" height="1280" alt="image" src="https://github.com/user-attachments/assets/f0afc20b-6d35-461f-a074-5baabf2a459f" />
+<img width="1290" height="1260" alt="image" src="https://github.com/user-attachments/assets/3d9d9b2c-c805-44cb-8ae7-a09c16841e57" />
+
 
 For visual examples, run the application and experiment with different inputs and settings.

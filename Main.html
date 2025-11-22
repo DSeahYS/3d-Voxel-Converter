@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Voxel Studio | Optimized Visibility</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- OrbitControls -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- Post Processing -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/LuminosityHighPassShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+
+    <style>
+        body { margin: 0; background: #111; color: white; overflow: hidden; font-family: 'Inter', sans-serif; }
+        canvas { display: block; outline: none; }
+        
+        ::-webkit-scrollbar { width: 5px; }
+        ::-webkit-scrollbar-thumb { background: #4f46e5; border-radius: 4px; }
+        
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 14px; width: 14px; border-radius: 50%;
+            background: #6366f1; cursor: pointer; margin-top: -5px; border: 2px solid #fff;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; cursor: pointer; background: #333; border-radius: 2px;
+        }
+        
+        .glass {
+            background: rgba(20, 20, 25, 0.9);
+            backdrop-filter: blur(16px);
+            border-right: 1px solid rgba(255,255,255,0.1);
+            box-shadow: 5px 0 15px rgba(0,0,0,0.5);
+        }
+        .btn-tool {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.2s;
+        }
+        .btn-tool:hover { background: rgba(99, 102, 241, 0.2); border-color: #6366f1; }
+        .btn-active { background: #6366f1 !important; color: white; border-color: #6366f1; }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container" class="absolute inset-0 z-0 bg-[#111]"></div>
+
+    <!-- Video Source (Hidden) -->
+    <video id="video-source" loop muted playsinline crossorigin="anonymous" style="display:none"></video>
+    
+    <!-- Main UI -->
+    <div class="absolute inset-0 flex z-10 pointer-events-none">
+        
+        <!-- Sidebar -->
+        <div class="w-80 glass h-full flex flex-col pointer-events-auto overflow-y-auto no-scrollbar">
+            
+            <!-- Header -->
+            <div class="p-6 border-b border-white/10 bg-black/20">
+                <h1 class="text-xl font-bold tracking-tighter flex items-center gap-2">
+                    VOXEL<span class="text-indigo-400">STUDIO</span>
+                </h1>
+                <p class="text-xs text-gray-400 mt-1">Fixed Lighting Engine</p>
+            </div>
+
+            <!-- Controls Area -->
+            <div class="p-6 space-y-8 flex-1">
+
+                <!-- 1. Media Input -->
+                <div class="space-y-3">
+                    <label class="text-[10px] font-bold text-gray-500 tracking-wider uppercase">Source</label>
+                    <div class="grid grid-cols-2 gap-2">
+                        <label class="btn-tool rounded-lg p-3 cursor-pointer text-center flex flex-col items-center justify-center gap-2 h-20 hover:bg-white/5">
+                            <svg class="w-6 h-6 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                            <span class="text-xs">Upload</span>
+                            <input type="file" id="file-input" accept="image/*,video/*" class="hidden">
+                        </label>
+                        <button id="btn-mic" class="btn-tool rounded-lg p-3 text-center flex flex-col items-center justify-center gap-2 h-20 hover:bg-white/5">
+                            <svg class="w-6 h-6 text-pink-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z"/></svg>
+                            <span class="text-xs">Mic On</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 2. Shapes -->
+                <div class="space-y-3">
+                    <label class="text-[10px] font-bold text-gray-500 tracking-wider uppercase">Shape</label>
+                    <div class="flex bg-black/40 rounded-lg p-1 border border-white/10">
+                        <button class="flex-1 py-2 text-xs rounded-md btn-active transition" onclick="setShape('box', this)">Box</button>
+                        <button class="flex-1 py-2 text-xs rounded-md transition hover:text-white text-gray-400" onclick="setShape('sphere', this)">Sphere</button>
+                        <button class="flex-1 py-2 text-xs rounded-md transition hover:text-white text-gray-400" onclick="setShape('cone', this)">Spike</button>
+                    </div>
+                </div>
+
+                <!-- 3. Visual Sliders -->
+                <div class="space-y-6">
+                    <!-- Lighting Control -->
+                    <div>
+                         <div class="flex justify-between text-xs mb-2 font-medium"><span class="text-gray-300">Exposure / Light</span><span id="val-exp" class="text-indigo-400">1.0</span></div>
+                        <input type="range" id="param-exp" min="0.1" max="3.0" step="0.1" value="1.0">
+                    </div>
+                     <!-- Bloom Control -->
+                     <div>
+                        <div class="flex justify-between text-xs mb-2 font-medium"><span class="text-gray-300">Glow (Bloom)</span><span id="val-bloom" class="text-indigo-400">0.4</span></div>
+                       <input type="range" id="param-bloom" min="0" max="2.0" step="0.1" value="0.4">
+                   </div>
+                    
+                    <div class="h-px bg-white/10"></div>
+
+                    <div>
+                        <div class="flex justify-between text-xs mb-2 font-medium"><span class="text-gray-300">Grid Density</span><span id="val-res" class="text-indigo-400">100</span></div>
+                        <input type="range" id="param-res" min="32" max="200" step="4" value="100">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs mb-2 font-medium"><span class="text-gray-300">Height 3D</span><span id="val-disp" class="text-indigo-400">3.0</span></div>
+                        <input type="range" id="param-disp" min="0" max="10" step="0.1" value="3.0">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs mb-2 font-medium"><span class="text-gray-300">Voxel Size</span><span id="val-size" class="text-indigo-400">0.8</span></div>
+                        <input type="range" id="param-size" min="0.1" max="1.5" step="0.05" value="0.8">
+                    </div>
+                </div>
+
+                <!-- 4. Color Mode -->
+                <div class="space-y-3">
+                    <label class="text-[10px] font-bold text-gray-500 tracking-wider uppercase">Color Style</label>
+                    <select id="color-mode" class="w-full bg-black/40 border border-white/10 rounded px-3 py-2 text-xs text-gray-300 outline-none focus:border-indigo-500">
+                        <option value="0">Original Colors</option>
+                        <option value="1">Rainbow Heightmap</option>
+                        <option value="2">Cyberpunk (Cyan/Pink)</option>
+                        <option value="3">Golden Hour</option>
+                        <option value="4">Matrix Green</option>
+                    </select>
+                </div>
+                
+                 <div class="space-y-3">
+                    <label class="text-[10px] font-bold text-gray-500 tracking-wider uppercase">Background</label>
+                    <input type="color" id="bg-color" value="#111111" class="w-full h-8 rounded cursor-pointer bg-transparent border-0 p-0">
+                </div>
+
+            </div>
+
+            <!-- Footer -->
+            <div class="p-6 border-t border-white/10">
+                <button id="btn-screenshot" class="w-full bg-indigo-600 hover:bg-indigo-500 text-white py-3 rounded-lg text-xs font-bold tracking-wider transition shadow-lg shadow-indigo-900/20">
+                    SAVE IMAGE
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vertex Shader: Calculates Position & Passes Normal -->
+    <script id="vertexShader" type="x-shader/x-vertex">
+        uniform sampler2D map;
+        uniform float width;
+        uniform float height;
+        uniform float pointSize;
+        uniform float displacementScale;
+        uniform float alphaThreshold;
+        uniform float time;
+        uniform float waveSpeed;
+        uniform float audioLevel;
+
+        attribute vec3 instancePosition;
+        
+        varying vec2 vUv;
+        varying vec4 vColor;
+        varying float vVisible;
+        varying float vHeight;
+        varying vec3 vNormal;
+        varying vec3 vViewPosition;
+
+        void main() {
+            // Calculate UV based on grid position
+            vec2 uv = (instancePosition.xy + vec2(width/2.0, height/2.0)) / vec2(width, height);
+            vUv = uv;
+
+            vec4 texColor = texture2D(map, uv);
+            vColor = texColor;
+
+            // Brightness for height
+            float brightness = (texColor.r + texColor.g + texColor.b) / 3.0;
+            vVisible = (texColor.a < alphaThreshold) ? 0.0 : 1.0;
+
+            // --- HEIGHT CALCULATION ---
+            float h = brightness * displacementScale;
+            
+            // Wave Logic
+            float dist = distance(uv, vec2(0.5));
+            if(waveSpeed > 0.01) {
+                h += sin(dist * 10.0 - time * waveSpeed) * 0.5;
+            }
+            
+            // Audio Logic
+            h += h * audioLevel * 2.0;
+
+            vHeight = h;
+
+            // Position Logic
+            vec3 finalPos = instancePosition;
+            finalPos.z += h; // Move instance up
+            
+            // Add local vertex position (scaled)
+            vec3 transformed = position * pointSize; 
+            finalPos += transformed;
+
+            // Pass normal to fragment shader for lighting
+            vNormal = normal;
+
+            vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
+            vViewPosition = -mvPosition.xyz;
+            gl_Position = projectionMatrix * mvPosition;
+        }
+    </script>
+
+    <!-- Fragment Shader: Handles Lighting & Color -->
+    <script id="fragmentShader" type="x-shader/x-fragment">
+        uniform int colorMode;
+        uniform float exposure; // Brightness control
+
+        varying vec4 vColor;
+        varying float vVisible;
+        varying float vHeight;
+        varying vec3 vNormal;
+
+        // Palette Generator
+        vec3 palette( in float t, in vec3 a, in vec3 b, in vec3 c, in vec3 d ) {
+            return a + b*cos( 6.28318*(c*t+d) );
+        }
+
+        void main() {
+            if (vVisible < 0.5) discard;
+            
+            vec3 baseColor = vColor.rgb;
+
+            // --- COLOR MODES ---
+            if (colorMode == 1) { // Rainbow
+                baseColor = palette(vHeight * 0.1, vec3(0.5), vec3(0.5), vec3(1.0), vec3(0.0,0.33,0.67));
+            } 
+            else if (colorMode == 2) { // Cyberpunk
+                vec3 c1 = vec3(0.0, 1.0, 1.0); 
+                vec3 c2 = vec3(1.0, 0.0, 1.0); 
+                baseColor = mix(c1, c2, vHeight * 0.1);
+            }
+            else if (colorMode == 3) { // Golden
+                 baseColor = mix(vec3(1.0, 0.5, 0.0), vec3(1.0, 0.9, 0.5), vHeight * 0.1);
+            }
+            else if (colorMode == 4) { // Matrix
+                 baseColor = vec3(0.0, 1.0, 0.2) * (vHeight * 0.2 + 0.5);
+            }
+
+            // --- LIGHTING CALCULATION (The Fix) ---
+            // Simple directional light coming from top-right
+            vec3 lightDir = normalize(vec3(0.5, 0.5, 1.0)); 
+            
+            // Calculate how much the face is facing the light
+            float diff = max(dot(vNormal, lightDir), 0.0);
+            
+            // Add ambient light (0.3) so shadows aren't pitch black + diffuse (0.7)
+            float lighting = 0.3 + (diff * 0.7);
+
+            vec3 finalColor = baseColor * lighting * exposure;
+
+            gl_FragColor = vec4(finalColor, vColor.a);
+        }
+    </script>
+
+    <script>
+        // --- SETUP ---
+        const scene = new THREE.Scene();
+        
+        // Camera setup
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, -60, 60);
+        camera.lookAt(0,0,0);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: "high-performance", preserveDrawingBuffer: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        
+        // **TONE MAPPING (Crucial for fixing brightness)**
+        renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.toneMappingExposure = 1.0;
+        
+        document.getElementById('canvas-container').appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.5;
+
+        // --- AUDIO ---
+        let audioContext, analyser, dataArray;
+        let audioLevel = 0;
+        let isAudioActive = false;
+
+        async function initAudio() {
+            if(isAudioActive) return;
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+                source.connect(analyser);
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+                isAudioActive = true;
+                document.getElementById('btn-mic').classList.add('btn-active');
+                document.getElementById('btn-mic').querySelector('span').textContent = "Active";
+            } catch (e) {
+                alert("Could not access microphone.");
+            }
+        }
+
+        // --- VOXEL SYSTEM ---
+        let instancedMesh;
+        let geometryBase = new THREE.BoxGeometry(1,1,1);
+        
+        const uniforms = {
+            map: { value: new THREE.TextureLoader().load('https://threejs.org/examples/textures/uv_grid_opengl.jpg') },
+            width: { value: 100 },
+            height: { value: 100 },
+            pointSize: { value: 0.8 },
+            displacementScale: { value: 3.0 },
+            alphaThreshold: { value: 0.1 },
+            time: { value: 0.0 },
+            waveSpeed: { value: 0.0 }, // Default to 0 for cleaner look
+            audioLevel: { value: 0.0 },
+            colorMode: { value: 0 },
+            exposure: { value: 1.0 }
+        };
+
+        const material = new THREE.ShaderMaterial({
+            uniforms: uniforms,
+            vertexShader: document.getElementById('vertexShader').textContent,
+            fragmentShader: document.getElementById('fragmentShader').textContent,
+            transparent: true,
+            side: THREE.DoubleSide
+        });
+
+        function createMesh(size) {
+            if (instancedMesh) {
+                scene.remove(instancedMesh);
+                instancedMesh.geometry.dispose();
+            }
+
+            const geometry = new THREE.InstancedBufferGeometry();
+            geometry.index = geometryBase.index;
+            geometry.attributes.position = geometryBase.attributes.position;
+            geometry.attributes.normal = geometryBase.attributes.normal; // IMPT for lighting
+            geometry.attributes.uv = geometryBase.attributes.uv;
+
+            const count = size * size;
+            const offsets = new Float32Array(count * 3);
+            for (let i = 0; i < count; i++) {
+                const x = (i % size) - (size / 2);
+                const y = Math.floor(i / size) - (size / 2);
+                offsets[i * 3] = x;
+                offsets[i * 3 + 1] = y; 
+                offsets[i * 3 + 2] = 0;
+            }
+            geometry.setAttribute('instancePosition', new THREE.InstancedBufferAttribute(offsets, 3));
+
+            instancedMesh = new THREE.Mesh(geometry, material);
+            scene.add(instancedMesh);
+            uniforms.width.value = size;
+            uniforms.height.value = size;
+        }
+
+        createMesh(100);
+
+        // --- POST PROCESSING ---
+        const composer = new THREE.EffectComposer(renderer);
+        const renderPass = new THREE.RenderPass(scene, camera);
+        composer.addPass(renderPass);
+
+        // Adjusted Bloom: much softer threshold and strength
+        const bloomPass = new THREE.UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.5, 0.4, 0.85);
+        bloomPass.threshold = 0.2;
+        bloomPass.strength = 0.4; // Reduced from 1.2 to 0.4
+        bloomPass.radius = 0.5;
+        composer.addPass(bloomPass);
+
+        // --- UI BINDINGS ---
+        window.setShape = (type, btn) => {
+            document.querySelectorAll('.bg-black\\/40 button').forEach(b => {
+                b.classList.remove('btn-active');
+                b.classList.add('text-gray-400');
+            });
+            btn.classList.add('btn-active');
+            btn.classList.remove('text-gray-400');
+
+            if(type === 'box') geometryBase = new THREE.BoxGeometry(1,1,1);
+            if(type === 'sphere') geometryBase = new THREE.SphereGeometry(0.6, 12, 12);
+            if(type === 'cone') geometryBase = new THREE.ConeGeometry(0.5, 1.5, 4);
+            createMesh(uniforms.width.value);
+        };
+
+        // File Input
+        const videoElement = document.getElementById('video-source');
+        document.getElementById('file-input').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if(!file) return;
+            const url = URL.createObjectURL(file);
+            
+            if(file.type.startsWith('video')) {
+                videoElement.src = url;
+                videoElement.play();
+                const tex = new THREE.VideoTexture(videoElement);
+                uniforms.map.value = tex;
+            } else {
+                new THREE.TextureLoader().load(url, (tex) => {
+                    uniforms.map.value = tex;
+                    videoElement.pause();
+                });
+            }
+        });
+
+        document.getElementById('btn-mic').addEventListener('click', initAudio);
+
+        // Screenshot
+        document.getElementById('btn-screenshot').addEventListener('click', () => {
+            renderer.render(scene, camera); // Render without bloom for crisp screenshot? Or with?
+            composer.render(); // Render with bloom
+            const data = renderer.domElement.toDataURL('image/png');
+            const a = document.createElement('a');
+            a.href = data;
+            a.download = 'voxel_art_' + Date.now() + '.png';
+            a.click();
+        });
+
+        document.getElementById('bg-color').addEventListener('input', (e) => {
+            document.getElementById('canvas-container').style.backgroundColor = e.target.value;
+        });
+
+        // Sliders
+        const bind = (id, key, display) => {
+            document.getElementById(id).addEventListener('input', (e) => {
+                const val = parseFloat(e.target.value);
+                if(display) document.getElementById(display).textContent = val.toFixed(1);
+                
+                if(key === 'resolution') createMesh(parseInt(val));
+                else if (key === 'bloom') bloomPass.strength = val;
+                else uniforms[key].value = val;
+            });
+        };
+
+        bind('param-res', 'resolution', 'val-res');
+        bind('param-disp', 'displacementScale', 'val-disp');
+        bind('param-size', 'pointSize', 'val-size');
+        bind('param-exp', 'exposure', 'val-exp');
+        bind('param-bloom', 'bloom', 'val-bloom');
+        
+        document.getElementById('color-mode').addEventListener('change', (e) => {
+            uniforms.colorMode.value = parseInt(e.target.value);
+        });
+
+        // --- LOOP ---
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            uniforms.time.value = clock.getElapsedTime();
+
+            if(isAudioActive && analyser) {
+                analyser.getByteFrequencyData(dataArray);
+                let sum = 0;
+                for(let i=0; i<dataArray.length; i++) sum += dataArray[i];
+                let avg = sum / dataArray.length;
+                audioLevel = avg / 255;
+                uniforms.audioLevel.value += (audioLevel - uniforms.audioLevel.value) * 0.15;
+            }
+
+            controls.update();
+            composer.render();
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            composer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+    </script>
+</body>
+</html>
